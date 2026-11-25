@@ -89,3 +89,93 @@ Starter дээр 63 − 17 = **46 мутант SURVIVED**. Мөрийн дуга
     `assertTrue(муж)` тэр буруу утгыг хүлээн зөвшөөрдөг тул амьд үлдсэн.
 - **Equivalent (0):** Амьд мутантуудын аль нь ч бүх оролт дээр анхны кодтой ижил ажилладаггүй тул equivalent гэж
   ангилсан мутант алга.
+
+## 3. Хэсэг B — Тестүүдээ хүчтэй болгох
+
+**B1 — Assertion-уудыг хүчтэй болгох.** Оролтуудыг өөрчлөлгүйгээр `assertNotNull` / `assertTrue(0 ≤ x ≤ 100)`
+шалгалтуудыг яг утгын `assertEquals` болгосон: `letterGrade(95) = "A"`, `gpa({95,85}) = 3.5`,
+`gpa({75,65}) = 1.5`, `gpa({40}) = 0.0`, `scholarship(3.9,16,false) = 100`, `scholarship(4.0,20,true) = 0` г.м.
+Энэ алхмаар *return value*, *removed conditional*, *math*, *switch* мутантууд алагдсан.
+
+**B2 — Зааг утгын тестүүд нэмэх.**
+- `letterGrade`: 100, 90/89.99, 80/79.99, 70/69.99, 60/59.99, 0 ба хүрээнээс гадуур −0.01, 100.01.
+- `gpa`: switch-ийн бүх үсгэн дүн (A=4, B=3, C=2, D=1, F=0) тус тусдаа + холимог `{95,85,75,65,30}` = 2.0.
+- `scholarship`: (3.8,15)→100, (3.79,15)→70, (3.8,14)→70; (3.4,12)→70, (3.39,12)→50, (3.4,11)→50;
+  (3.0,0)→50, (2.99,20)→0; оролтын хязгаар gpa 0 ба 4, credits 0 хүчинтэй, −0.01 / 4.01 / −1 нь exception.
+- `&&` нөхцлийн нэг тал нь л үнэн байх хослолууд: (3.5,16)→70, (3.9,13)→70, (3.1,13)→50, (3.5,5)→50 —
+  "replaced comparison check with true" мутантуудыг алахад шаардлагатай байсан.
+
+### Хэмжилтийн явц
+
+| Хэмжилт | Файл | Тестийн тоо | Mutation Coverage (Killed) | Test Strength | JaCoCo Branch |
+|---|---|---|---|---|---|
+| Эхлэл | `results/pit-start.txt` | 6 | **17/63 (27%)** | 27% | 38/41 |
+| B1-ийн дараа | `results/pit-B1.txt` | 6 | **45/63 (71%)** | 71% | 38/41 |
+| B2-ийн дараа (эцсийн) | `results/pit-B2.txt` | 16 | **63/63 (100%)** | 100% | 41/41 (`results/jacoco-final.csv`) |
+
+Файлуудын мөрүүд:
+
+```text
+results/pit-start.txt: >> Generated 63 mutations Killed 17 (27%)
+results/pit-B1.txt:    >> Generated 63 mutations Killed 45 (71%)
+results/pit-B2.txt:    >> Generated 63 mutations Killed 63 (100%)
+```
+
+Line coverage гурван хэмжилтэд бүгд 25/25 (100%) хэвээр байсан ч mutation score 27% → 71% → 100% болж өссөн.
+B1-ийн дараа үлдсэн 18 мутант бүгд *conditional boundary* (13) ба `&&`-ийн нэг талыг `true` болгосон (5) мутант
+байсан нь Хэсэг A-ийн "зааг тест дутуу" гэсэн дүгнэлттэй таарсан. Эцэст амьд мутант 0 тул equivalent гэж
+хасах мутант байхгүй, Test Strength = 100%.
+
+Эцсийн PIT тайлан:
+
+![PIT final](images/pit-B2.png)
+
+![PIT final source view](images/pit-B2-source.png)
+
+## 4. Хэсэг C — Гараар нэг мутант (PIT-гүйгээр)
+
+`scholarship()`-ийн 52-р мөрийг гараар өөрчилсөн:
+
+```diff
+-        if (gpa >= 3.8 && credits >= 15) return 100;
++        if (gpa > 3.8 && credits >= 15) return 100;
+```
+
+`mvn test 2>&1 | tee results/mvn-test-manual-mutant.txt` — **1 тест унасан:**
+
+```text
+[ERROR] mn.edu.must.sqat.ScholarshipCalculatorTest.scholarship_fullBoundary_3_8_and_15 -- Time elapsed: 0.139 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <100> but was: <70>
+	at mn.edu.must.sqat.ScholarshipCalculatorTest.scholarship_fullBoundary_3_8_and_15(ScholarshipCalculatorTest.java:117)
+[ERROR] Tests run: 16, Failures: 1, Errors: 0, Skipped: 0
+```
+
+Унасан мөр: `assertEquals(100, calc.scholarship(3.8, 15, false));` — B2-ийн зааг тест мутантыг барьсан.
+Дараа нь `git restore src/main`-ээр буцаасан (мутацитай код commit хийгдээгүй; `src/main` нь Starter commit-той ижил).
+
+### Өөрийн equivalent мутант
+
+`gpa()`-ийн switch дотор `case "D"`-ийн `break`-ийг устгасан:
+
+```diff
+-                case "D": total += 1; break;
++                case "D": total += 1;
+```
+
+`mvn test` (`results/mvn-test-equivalent-mutant.txt`) → `Tests run: 16, Failures: 0` — ямар ч тест унаагүй.
+**Тайлбар:** `break` устсан тул "D" салаа дараагийн `default:` салаа руу "унаж" ороход тэнд зөвхөн `break` байдаг
+тул `total` өөрчлөгдөхгүй, функцийн үр дүн бүх оролт дээр анхныхтай яг ижил. Гадаас ажиглагдах зан төлөв огт
+өөрчлөгдөөгүй тул ямар ч тест (хэчнээн хүчтэй байсан ч) энэ мутантыг алж чадахгүй — энэ бол жинхэнэ equivalent мутант.
+
+## 5. Дүгнэлт
+
+Code coverage (JaCoCo) нь тестийн явцад кодын аль мөр, аль салаа *ажилласан*-ыг л хэмждэг бол mutation score нь
+тест кодын *алдааг барьж чадах эсэх*-ийг хэмждэг. Энэ лабад starter багц Line 100% өгч байсан ч mutation score
+ердөө 27% байсан нь кодыг ажиллуулах нь түүнийг шалгахтай адил биш гэдгийг харуулсан. Assertion-уудыг яг утгын
+болгоход (B1) score 71% болж, зааг утгын тестүүд нэмэхэд (B2) 100% хүрсэн — хоёр алхамд line coverage огт
+өөрчлөгдөөгүй. Иймээс coverage бол тестийн чанарын доод хязгаар (хамраагүй кодыг тестлээгүй нь тодорхой), харин
+mutation score бол assertion-ийн хүчийг шууд хэмжих үзүүлэлт юм. AI-гаар тест бичүүлэхэд AI ихэвчлэн кодыг
+"дайрдаг" ч `assertNotNull`, муж шалгах зэрэг сул assertion эсвэл заагийн утгыг алгассан тест үүсгэх магадлалтай
+бөгөөд ийм тест coverage-ийг өндөр харагдуулж хуурамч итгэл төрүүлдэг. Mutation testing нь ийм тестийн бодит
+алдаа барих чадварыг объектив хэмжиж, аль мутант амьд үлдсэнээр яг ямар тест дутууг зааж өгдөг тул AI-ийн
+бичсэн тестийг заавал PIT-ээр шалгах хэрэгтэй.
